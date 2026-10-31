@@ -32,6 +32,25 @@ The theme decides the questions, the captcha text, the default greeting and the 
 
 If you need another theme, say for a gaming, programming or local community chat, [open an issue](https://github.com/Axawys/axbot/issues) describing it and I'll add it to the bot.
 
+## Statistics
+
+The bot keeps track of who was shown a captcha and how it ended. The owner and managers can request statistics for their chat over any period up to a year: the bot sends a chart of failed join attempts with a summary below it.
+
+![Example chart](docs/stats-example.png)
+
+The chart shows how many people didn't answer in time, how many answered wrong, and how many bots were added by regular members. The summary also lists how many people were shown the captcha, how many passed and what percentage that is, how many were let in manually, and how many left without answering. Periods longer than 92 days are grouped by week on the chart.
+
+In the group, use the `/stats` command. In private chat, open the chat's settings and go to "Статистика" (Statistics). The period can be given as:
+
+- nothing: the last 7 days;
+- `30`: the last 30 days;
+- `01.10.2026 31.10.2026` or `2026-10-01 2026-10-31`: from one date to another;
+- `15.10`: a single day of the current year.
+
+Days are counted in the time zone set in `TIMEZONE`.
+
+To render an example chart from made-up data, run `python scripts/stats_example.py example.png 30`.
+
 ## Who can manage the bot
 
 The owner, which is whoever added the bot to the chat. If the bot is removed and added again, the owner only changes if the person who re-added it is a chat admin.
@@ -44,7 +63,7 @@ Superadmins listed in `SUPERADMINS`. They can see and configure every chat.
 
 ## Settings in private chat
 
-Send `/start` to the bot and open "Мои чаты" (My chats). For each chat you can turn the captcha on or off, set the time limit, the number of attempts, what happens to users who fail, the theme and the question type. The same panel has the greeting text and its auto-delete timer, deletion of service messages, and the list of managers. The "Попробовать капчу" (Try the captcha) button sends you a test question.
+Send `/start` to the bot and open "Мои чаты" (My chats). For each chat you can turn the captcha on or off, set the time limit, the number of attempts, what happens to users who fail, the theme and the question type. The same panel has the statistics, the greeting text and its auto-delete timer, deletion of service messages, and the list of managers. The "Попробовать капчу" (Try the captcha) button sends you a test question.
 
 ## Commands in the group
 
@@ -64,6 +83,7 @@ Only the owner and managers can use these. If anyone else sends one, the bot jus
 | `/greetttl 300` | delete the greeting after this many seconds, 0 means keep it |
 | `/clean on` or `off` | delete join and leave messages |
 | `/pass` | let a user in without the captcha. Reply to their captcha or message, or pass their ID |
+| `/stats` | chart of failed join attempts. You can give a period: `/stats 30` or `/stats 01.10.2026 31.10.2026` |
 | `/managers` | who manages the bot |
 | `/addmanager`, `/delmanager` | add or remove a manager by replying to their message or by ID. Owner only |
 
@@ -71,7 +91,7 @@ The greeting text supports `{mention}` (a link to the user), `{name}` (their nam
 
 ## Running
 
-Create a bot with [@BotFather](https://t.me/BotFather) and copy the token. Copy `.env.example` to `.env` and put the token in `BOT_TOKEN`.
+Create a bot with [@BotFather](https://t.me/BotFather) and copy the token. Copy `.env.example` to `.env` and put the token in `BOT_TOKEN`. Set `TIMEZONE` to the chat's time zone, for example `Europe/Moscow`, otherwise statistics are counted in UTC.
 
 With Docker:
 

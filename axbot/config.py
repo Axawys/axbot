@@ -13,6 +13,7 @@ class Config:
     db_path: str
     superadmins: frozenset[int]
     log_level: str
+    timezone: str = "UTC"
 
 
 def _load_dotenv(path: Path) -> None:
@@ -44,4 +45,5 @@ def load_config() -> Config:
         db_path=os.environ.get("DB_PATH", "axbot.sqlite3"),
         superadmins=superadmins,
         log_level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+        timezone=os.environ.get("TIMEZONE", "UTC").strip() or "UTC",
     )

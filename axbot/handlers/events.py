@@ -154,6 +154,8 @@ async def user_joined(event: ChatMemberUpdated, bot: Bot, db: Database) -> None:
                 await bot.ban_chat_member(chat.chat_id, user.id)
             except TelegramAPIError as e:
                 log.warning("cannot kick bot %s: %s", user.id, e)
+            else:
+                await db.log_event(chat.chat_id, user.id, "bot_kicked")
         return
 
     if added_by_admin:

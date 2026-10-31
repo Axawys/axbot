@@ -12,10 +12,10 @@ from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message, MessageOriginUser
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardMarkup, Message, MessageOriginUser
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from .. import service
+from .. import service, stats
 from ..common import (
     ATTEMPTS_MAX,
     ATTEMPTS_MIN,
@@ -43,6 +43,7 @@ router.callback_query.filter(F.message.chat.type == "private")
 class Input(StatesGroup):
     greeting = State()
     manager = State()
+    stats_range = State()
 
 
 START_TEXT = """👋 Привет! Я <b>axbot</b>, защищаю Telegram-чаты от спам-ботов.
@@ -90,9 +91,10 @@ def panel_keyboard(chat: ChatSettings) -> InlineKeyboardMarkup:
     )
     kb.button(text="💬 Приветствие", callback_data=Panel(action="greet", chat_id=cid))
     kb.button(text="👥 Менеджеры", callback_data=Panel(action="mgr", chat_id=cid))
+    kb.button(text="📊 Статистика", callback_data=Panel(action="stats", chat_id=cid))
     kb.button(text="🧪 Попробовать капчу", callback_data=Panel(action="try", chat_id=cid, value=f"{chat.theme},{chat.mode}"))
     kb.button(text="« Мои чаты", callback_data=Panel(action="list"))
-    kb.adjust(1, 2, 1, 2, 1, 2, 1, 1)
+    kb.adjust(1, 2, 1, 2, 1, 2, 2, 1)
     return kb.as_markup()
 
 
@@ -468,6 +470,67 @@ async def input_manager(message: Message, state: FSMContext, bot: Bot, db: Datab
     await state.clear()
     await message.answer(f"✅ {mention(uid, await _name(bot, cid, uid))} теперь менеджер.")
     await show_managers(message, bot, db, config, cid)
+
+
+# --------------------------------------------------------------- statistics
+
+STATS_PRESETS = [("7", "7 дней"), ("30", "30 дней"), ("90", "90 дней"), ("365", "Год")]
+
+
+def stats_keyboard(cid: int) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    for value, label in STATS_PRESETS:
+        kb.button(text=label, callback_data=Panel(action="stats", chat_id=cid, value=value))
+    kb.button(text="📅 Свой период", callback_data=Panel(action="stats_custom", chat_id=cid))
+    back_button(kb, cid)
+    kb.adjust(4, 1, 1)
+    return kb.as_markup()
+
+
+async def send_stats(target: Message, db: Database, config: Config, cid: int, range_text: str) -> bool:
+    chat = await db.get_chat(cid)
+    try:
+        png, caption = await stats.build_report(db, cid, chat.title, range_text, config.timezone)
+    except stats.RangeError as e:
+        await target.answer(f"{e}\n\n{stats.RANGE_HELP}\n\nИли /cancel.")
+        return False
+    await target.answer_photo(BufferedInputFile(png, "stats.png"), caption=caption, reply_markup=stats_keyboard(cid))
+    return True
+
+
+@router.callback_query(Panel.filter(F.action == "stats"))
+async def cb_stats(callback: CallbackQuery, callback_data: Panel, state: FSMContext, bot: Bot, db: Database, config: Config) -> None:
+    cid = callback_data.chat_id
+    if not await _check(callback, bot, db, config, cid):
+        return
+    await state.clear()
+    if not callback_data.value:
+        await _show(callback, "📊 За какой период показать неудачные попытки входа?", stats_keyboard(cid))
+        await callback.answer()
+        return
+    await callback.answer("Строю график…")
+    await send_stats(callback.message, db, config, cid, callback_data.value)
+
+
+@router.callback_query(Panel.filter(F.action == "stats_custom"))
+async def cb_stats_custom(callback: CallbackQuery, callback_data: Panel, state: FSMContext, bot: Bot, db: Database, config: Config) -> None:
+    cid = callback_data.chat_id
+    if not await _check(callback, bot, db, config, cid):
+        return
+    await state.set_state(Input.stats_range)
+    await state.update_data(chat_id=cid)
+    await callback.message.answer("📅 Пришли период.\n\n" + stats.RANGE_HELP + "\n\nОтмена: /cancel")
+    await callback.answer()
+
+
+@router.message(StateFilter(Input.stats_range), F.text)
+async def input_stats_range(message: Message, state: FSMContext, bot: Bot, db: Database, config: Config) -> None:
+    cid = (await state.get_data()).get("chat_id")
+    if not cid or not await can_manage(bot, db, config, cid, message.from_user.id):
+        await state.clear()
+        return
+    if await send_stats(message, db, config, cid, message.text):
+        await state.clear()
 
 
 # ------------------------------------------------------------ test captcha

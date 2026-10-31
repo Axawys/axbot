@@ -49,6 +49,7 @@ ADMIN_COMMANDS = [
     BotCommand(command="greetttl", description="Автоудаление приветствия, сек"),
     BotCommand(command="clean", description="on|off — удалять «вступил/вышел»"),
     BotCommand(command="pass", description="Пропустить новичка без капчи"),
+    BotCommand(command="stats", description="График неудачных попыток входа"),
     BotCommand(command="managers", description="Кто управляет ботом"),
     BotCommand(command="addmanager", description="Добавить менеджера"),
     BotCommand(command="delmanager", description="Убрать менеджера"),

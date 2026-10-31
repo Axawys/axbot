@@ -11,10 +11,10 @@ from html import escape
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandObject
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.deep_linking import create_start_link
 
-from .. import service
+from .. import service, stats
 from ..common import (
     ANONYMOUS_ADMIN_ID,
     ATTEMPTS_MAX,
@@ -37,6 +37,7 @@ router = Router(name="group_admin")
 router.message.filter(F.chat.type.in_(GROUP_TYPES))
 
 REPLY_TTL = 60  # command + bot reply are removed after this many seconds
+STATS_TTL = 600  # statistics stay a bit longer
 
 
 GROUP_HELP = """🐧 <b>Команды axbot в чате</b> (для владельца и менеджеров бота)
@@ -53,6 +54,8 @@ GROUP_HELP = """🐧 <b>Команды axbot в чате</b> (для владе�
 /greetttl 300 — удалять приветствие через N сек (0 — не удалять)
 /clean on|off — удалять сообщения «вступил / вышел»
 /pass — пропустить новичка без капчи (ответом на его капчу или сообщение, либо ID)
+/stats — график неудачных попыток входа за 7 дней
+/stats 30 или /stats 01.10.2026 31.10.2026 — за выбранный период
 /managers, /addmanager, /delmanager — менеджеры (ответом на сообщение или ID; только владелец)
 
 В приветствии работают подстановки <code>{{mention}}</code>, <code>{{name}}</code>, <code>{{chat}}</code>."""
@@ -301,6 +304,26 @@ async def cmd_pass(message: Message, command: CommandObject, bot: Bot, db: Datab
         await _reply(message, db, "✅ Пропустил без проверки.")
     else:
         await _reply(message, db, "У этого пользователя нет активной проверки.")
+
+
+@router.message(Command("stats"))
+async def cmd_stats(message: Message, command: CommandObject, bot: Bot, db: Database, config: Config) -> None:
+    if not await _authorized(message, bot, db, config):
+        return
+    try:
+        png, caption = await stats.build_report(
+            db, message.chat.id, message.chat.title or "", command.args, config.timezone
+        )
+    except stats.RangeError as e:
+        await _reply(message, db, f"{e}\n\n{stats.RANGE_HELP}")
+        return
+    try:
+        sent = await message.reply_photo(BufferedInputFile(png, "stats.png"), caption=caption)
+    except TelegramAPIError:
+        return
+    delete_at = int(time.time()) + STATS_TTL
+    await db.schedule_delete(message.chat.id, message.message_id, delete_at)
+    await db.schedule_delete(sent.chat.id, sent.message_id, delete_at)
 
 
 @router.message(Command("managers"))

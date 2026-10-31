@@ -185,6 +185,7 @@ async def start_captcha(
                 restore_perms=restore,
             )
         )
+        await db.log_event(chat.chat_id, user.id, "captcha")
         log.info("captcha %s for user %s in chat %s", q.id, user.id, chat.chat_id)
 
 
@@ -235,7 +236,7 @@ async def handle_answer(bot: Bot, db: Database, callback, data: Cap) -> None:
         attempts = p.attempts_left - 1
         if attempts <= 0:
             await callback.answer("❌ Неверно. Попытки закончились.", show_alert=True)
-            await _fail(bot, db, chat, p)
+            await _fail(bot, db, chat, p, "fail_wrong")
             return
 
         new_q = pick_question(chat.theme, chat.mode, exclude=p.question_id)
@@ -261,8 +262,9 @@ async def _lift(bot: Bot, chat_id: int, user_id: int, restore: str | None) -> No
         log.warning("cannot unrestrict %s in %s: %s", user_id, chat_id, e)
 
 
-async def _pass(bot: Bot, db: Database, chat: ChatSettings, p: Pending) -> None:
+async def _pass(bot: Bot, db: Database, chat: ChatSettings, p: Pending, kind: str = "pass") -> None:
     await db.remove_pending(p.chat_id, p.user_id)
+    await db.log_event(p.chat_id, p.user_id, kind)
     await safe_delete(bot, p.chat_id, p.message_id)
     await _lift(bot, p.chat_id, p.user_id, p.restore_perms)
     msg = None
@@ -279,8 +281,9 @@ async def _pass(bot: Bot, db: Database, chat: ChatSettings, p: Pending) -> None:
     log.info("user %s passed in chat %s", p.user_id, p.chat_id)
 
 
-async def _fail(bot: Bot, db: Database, chat: ChatSettings, p: Pending) -> None:
+async def _fail(bot: Bot, db: Database, chat: ChatSettings, p: Pending, kind: str) -> None:
     await db.remove_pending(p.chat_id, p.user_id)
+    await db.log_event(p.chat_id, p.user_id, kind)
     await safe_delete(bot, p.chat_id, p.message_id)
     try:
         if chat.fail_action == "ban":
@@ -304,7 +307,7 @@ async def approve(bot: Bot, db: Database, chat_id: int, user_id: int) -> bool:
         if p is None:
             return False
         chat = await db.get_or_create_chat(chat_id)
-        await _pass(bot, db, chat, p)
+        await _pass(bot, db, chat, p, "pass_manual")
         return True
 
 
@@ -315,6 +318,7 @@ async def cancel(bot: Bot, db: Database, chat_id: int, user_id: int) -> None:
         if p is None:
             return
         await db.remove_pending(chat_id, user_id)
+        await db.log_event(chat_id, user_id, "left")
         await safe_delete(bot, chat_id, p.message_id)
 
 
@@ -324,7 +328,7 @@ async def expire(bot: Bot, db: Database, chat_id: int, user_id: int) -> None:
         if p is None or p.deadline > int(time.time()):
             return
         chat = await db.get_or_create_chat(chat_id)
-        await _fail(bot, db, chat, p)
+        await _fail(bot, db, chat, p, "fail_timeout")
 
 
 # ---------------------------------------------------------------- watchdog

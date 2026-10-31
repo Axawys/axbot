@@ -22,6 +22,7 @@ from aiogram.methods import (
     GetMe,
     RestrictChatMember,
     SendMessage,
+    SendPhoto,
     TelegramMethod,
 )
 from aiogram.types import (
@@ -71,6 +72,12 @@ class FakeSession(BaseSession):
                 message_id=next(self._ids), date=NOW,
                 chat=Chat(id=method.chat_id, type="supergroup" if method.chat_id < 0 else "private"),
                 text=method.text, reply_markup=method.reply_markup,
+            )
+        if isinstance(method, SendPhoto):
+            return Message(
+                message_id=next(self._ids), date=NOW,
+                chat=Chat(id=method.chat_id, type="supergroup" if method.chat_id < 0 else "private"),
+                caption=method.caption,
             )
         if isinstance(method, EditMessageText):
             return True
@@ -374,3 +381,83 @@ async def test_private_try_buttons(env):
                                                 message=Message(message_id=5, date=NOW, chat=pm, text="m"),
                                                 data=b.callback_data))
     assert sum("Тестовая капча" in m.text for m in session.of(SendMessage)) == len(THEMES)
+
+
+# ------------------------------------------------------------- statistics
+
+
+def test_parse_range():
+    import datetime as _dt
+
+    from axbot.stats import RangeError, parse_range
+
+    today = _dt.date(2026, 10, 31)
+    assert parse_range("", today) == (_dt.date(2026, 10, 25), today)
+    assert parse_range("30", today) == (_dt.date(2026, 10, 2), today)
+    assert parse_range("01.10.2026 15.10.2026", today) == (_dt.date(2026, 10, 1), _dt.date(2026, 10, 15))
+    assert parse_range("2026-10-15 — 2026-10-01", today) == (_dt.date(2026, 10, 1), _dt.date(2026, 10, 15))
+    assert parse_range("5.10-7.10", today) == (_dt.date(2026, 10, 5), _dt.date(2026, 10, 7))
+    assert parse_range("15.10.26", today) == (_dt.date(2026, 10, 15), _dt.date(2026, 10, 15))
+    for bad in ("0", "1000", "вчера", "32.13.2026", "01.01.2020 31.12.2026"):
+        with pytest.raises(RangeError):
+            parse_range(bad, today)
+
+
+@pytest.mark.asyncio
+async def test_events_logged_and_stats_command(env):
+    bot, dp, db, session, feed = env
+    await add_bot(feed)
+
+    # 1) wrong answers → fail_wrong
+    await join(feed)
+    for _ in range(2):
+        p = await db.get_pending(CHAT.id, NEWBIE.id)
+        q = QUESTIONS[p.question_id]
+        await click(feed, session, p.message_id, NEWBIE, next(i for i in range(len(q.options)) if i != q.answer[0]))
+    # 2) timeout → fail_timeout
+    await join(feed)
+    await db.update_pending(CHAT.id, NEWBIE.id, deadline=0)
+    await service.expire(bot, db, CHAT.id, NEWBIE.id)
+    # 3) bot added by a member → bot_kicked
+    await join(feed, user=User(id=999, is_bot=True, first_name="SpamBot"), actor=STRANGER)
+    # 4) manual pass
+    await join(feed)
+    await feed(message=group_msg(f"/pass {NEWBIE.id}", OWNER, mid=50))
+
+    kinds = [k for k, _ in await db.events_between(CHAT.id, 0, 10**11)]
+    assert sorted(kinds) == sorted(["captcha", "fail_wrong", "captcha", "fail_timeout", "bot_kicked",
+                                    "captcha", "pass_manual"])
+
+    await feed(message=group_msg("/stats", OWNER, mid=51))
+    photo = session.of(SendPhoto)[-1]
+    assert "Не пустили: <b>3</b>" in photo.caption
+    assert "Капчу показали: 3" in photo.caption
+
+    await feed(message=group_msg("/stats 99.99.2026", OWNER, mid=52))
+    assert len(session.of(SendPhoto)) == 1  # bad range → help text, no photo
+
+    await feed(message=group_msg("/stats", STRANGER, mid=53))
+    assert len(session.of(SendPhoto)) == 1
+
+
+@pytest.mark.asyncio
+async def test_private_stats_panel(env):
+    bot, dp, db, session, feed = env
+    await add_bot(feed)
+    pm = Chat(id=OWNER.id, type="private")
+    msg = Message(message_id=5, date=NOW, chat=pm, text="m")
+    await feed(callback_query=CallbackQuery(id="x", from_user=OWNER, chat_instance="ci", message=msg,
+                                            data=f"p:stats:{CHAT.id}:30"))
+    assert len(session.of(SendPhoto)) == 1
+
+    await feed(callback_query=CallbackQuery(id="y", from_user=OWNER, chat_instance="ci", message=msg,
+                                            data=f"p:stats_custom:{CHAT.id}:"))
+    await feed(message=Message(message_id=6, date=NOW, chat=pm, from_user=OWNER, text="01.10.2026 31.10.2026"))
+    assert len(session.of(SendPhoto)) == 2
+    assert "01.10.2026 – 31.10.2026" in session.of(SendPhoto)[-1].caption
+
+    stranger_pm = Chat(id=STRANGER.id, type="private")
+    await feed(callback_query=CallbackQuery(id="z", from_user=STRANGER, chat_instance="ci",
+                                            message=Message(message_id=7, date=NOW, chat=stranger_pm, text="m"),
+                                            data=f"p:stats:{CHAT.id}:30"))
+    assert len(session.of(SendPhoto)) == 2

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, fields
 
 import aiosqlite
@@ -44,6 +45,15 @@ CREATE TABLE IF NOT EXISTS pending (
     PRIMARY KEY (chat_id, user_id)
 );
 
+-- Captcha history for statistics. kind: see EVENT_KINDS.
+CREATE TABLE IF NOT EXISTS events (
+    chat_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    kind    TEXT    NOT NULL,
+    ts      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS events_chat_ts ON events (chat_id, ts);
+
 CREATE TABLE IF NOT EXISTS scheduled_deletes (
     chat_id    INTEGER NOT NULL,
     message_id INTEGER NOT NULL,
@@ -51,6 +61,16 @@ CREATE TABLE IF NOT EXISTS scheduled_deletes (
     PRIMARY KEY (chat_id, message_id)
 );
 """
+
+EVENT_KINDS = {
+    "captcha",       # captcha shown to a newcomer
+    "pass",          # answered correctly
+    "pass_manual",   # let in by a manager with /pass
+    "fail_timeout",  # did not answer in time
+    "fail_wrong",    # ran out of attempts
+    "bot_kicked",    # a bot added by a regular member
+    "left",          # left the chat before answering
+}
 
 # Columns of `chats` that may be changed through settings.
 SETTING_FIELDS = {
@@ -196,7 +216,7 @@ class Database:
         return [_from_row(ChatSettings, r) for r in rows]
 
     async def migrate_chat(self, old_id: int, new_id: int) -> None:
-        for table in ("chats", "managers", "pending", "scheduled_deletes"):
+        for table in ("chats", "managers", "pending", "scheduled_deletes", "events"):
             await self.conn.execute(
                 f"UPDATE OR IGNORE {table} SET chat_id = ? WHERE chat_id = ?", (new_id, old_id)
             )
@@ -291,6 +311,25 @@ class Database:
     async def clear_pending_for_chat(self, chat_id: int) -> None:
         await self.conn.execute("DELETE FROM pending WHERE chat_id = ?", (chat_id,))
         await self.conn.commit()
+
+    # --------------------------------------------------------------- events
+
+    async def log_event(self, chat_id: int, user_id: int, kind: str, ts: int | None = None) -> None:
+        if kind not in EVENT_KINDS:
+            raise ValueError(f"unknown event kind: {kind}")
+        await self.conn.execute(
+            "INSERT INTO events (chat_id, user_id, kind, ts) VALUES (?, ?, ?, ?)",
+            (chat_id, user_id, kind, int(time.time()) if ts is None else ts),
+        )
+        await self.conn.commit()
+
+    async def events_between(self, chat_id: int, start_ts: int, end_ts: int) -> list[tuple[str, int]]:
+        """(kind, ts) for start_ts <= ts < end_ts."""
+        async with self.conn.execute(
+            "SELECT kind, ts FROM events WHERE chat_id = ? AND ts >= ? AND ts < ? ORDER BY ts",
+            (chat_id, start_ts, end_ts),
+        ) as cur:
+            return [(r["kind"], r["ts"]) for r in await cur.fetchall()]
 
     # ----------------------------------------------------- scheduled deletes
 
