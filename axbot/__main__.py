@@ -43,6 +43,7 @@ ADMIN_COMMANDS = [
     BotCommand(command="timeout", description="Время на ответ, сек"),
     BotCommand(command="attempts", description="Число попыток"),
     BotCommand(command="action", description="kick|ban — что делать с провалившими"),
+    BotCommand(command="theme", description="universal|linux — тематика вопросов"),
     BotCommand(command="mode", description="mixed|choice|order — тип вопросов"),
     BotCommand(command="greeting", description="Приветствие (текст | reset)"),
     BotCommand(command="greetttl", description="Автоудаление приветствия, сек"),

@@ -14,7 +14,7 @@ from aiogram.filters.callback_data import CallbackData
 
 from .config import Config
 from .db import ChatSettings, Database
-from .questions import MODES
+from .questions import MODES, get_theme
 
 log = logging.getLogger(__name__)
 
@@ -114,12 +114,6 @@ FAIL_ACTIONS = {
     "ban": "🔨 бан навсегда",
 }
 
-DEFAULT_GREETING = (
-    "🐧 {mention}, добро пожаловать в <b>{chat}</b>!\n"
-    "Проверка пройдена — ты точно не спам-бот. Располагайся, <code>sudo</code> не выдаём 😉"
-)
-
-
 def yes_no(value: bool) -> str:
     return "✅" if value else "❌"
 
@@ -132,6 +126,7 @@ def settings_summary(chat: ChatSettings) -> str:
         f"Время на ответ: {fmt_duration(chat.timeout)}\n"
         f"Попыток: {chat.attempts}\n"
         f"При провале: {FAIL_ACTIONS.get(chat.fail_action, chat.fail_action)}\n"
+        f"Тематика: {get_theme(chat.theme).title}\n"
         f"Вопросы: {MODES.get(chat.mode, chat.mode)}\n"
         f"Удалять «вступил / вышел»: {yes_no(chat.clean_service)}\n"
         f"Приветствие: {greeting}, автоудаление — {fmt_duration(chat.greeting_ttl)}"

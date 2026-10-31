@@ -2,13 +2,13 @@
 
 [Русская версия](README.md)
 
-A Telegram bot that keeps spam bots out of group chats. It was written for a Linux chat, so the captcha questions have some Linux humor in them. You don't need to know anything about Linux to answer them, just read carefully and use basic logic.
+A Telegram bot that keeps spam bots out of group chats. Every new member has to answer a simple question. No special knowledge is needed, just careful reading and basic logic.
 
 Note: the bot's messages and questions are in Russian.
 
 ## What it does
 
-When someone joins the chat, the bot mutes them and posts a question with buttons. There are two kinds of questions. Some have one correct button, for example "The kernel takes 40 minutes to compile and the build started at 13:30. When will it finish?". Others need several buttons pressed in the right order, for example sorting distro names alphabetically.
+When someone joins the chat, the bot mutes them and posts a question with buttons. There are two kinds of questions. Some have one correct button, for example "A train left at 9:45 and traveled for 50 minutes. When did it arrive?". Others need several buttons pressed in the right order, for example sorting fruit names alphabetically.
 
 If the answer is right, the bot unmutes the user and greets them. A wrong answer gives them a different question until they run out of attempts. When the attempts run out or time is up, the bot removes the user from the chat. You can choose between a kick (they can join again) and a ban.
 
@@ -19,6 +19,18 @@ The bot also:
 - deletes "joined the group" and "left the group" messages if that is enabled;
 - removes the captcha if the user leaves without answering;
 - keeps everything in SQLite, so pending checks and timers survive a restart.
+
+## Question themes
+
+There are two themes right now, and the chat admin picks one in the settings.
+
+Universal works for any chat and is the default. It has puzzles about counting, time, days of the week and simple logical conclusions.
+
+Linux is for Linux chats. Same kind of logic, but with jokes about vim, sudo and Tux the penguin. You still don't need to know anything about Linux to answer.
+
+The theme decides the questions, the captcha text, the default greeting and the message shown when someone fails.
+
+If you need another theme, say for a gaming, programming or local community chat, [open an issue](https://github.com/Axawys/axbot/issues) describing it and I'll add it to the bot.
 
 ## Who can manage the bot
 
@@ -32,7 +44,7 @@ Superadmins listed in `SUPERADMINS`. They can see and configure every chat.
 
 ## Settings in private chat
 
-Send `/start` to the bot and open "Мои чаты" (My chats). For each chat you can turn the captcha on or off, set the time limit, the number of attempts, what happens to users who fail, and the question type. The same panel has the greeting text and its auto-delete timer, deletion of service messages, and the list of managers. The "Попробовать капчу" (Try the captcha) button sends you a test question.
+Send `/start` to the bot and open "Мои чаты" (My chats). For each chat you can turn the captcha on or off, set the time limit, the number of attempts, what happens to users who fail, the theme and the question type. The same panel has the greeting text and its auto-delete timer, deletion of service messages, and the list of managers. The "Попробовать капчу" (Try the captcha) button sends you a test question.
 
 ## Commands in the group
 
@@ -46,6 +58,7 @@ Only the owner and managers can use these. If anyone else sends one, the bot jus
 | `/timeout 120` | time to answer in seconds, 30 to 3600 |
 | `/attempts 2` | number of attempts, 1 to 5 |
 | `/action kick` or `ban` | kick or ban users who fail |
+| `/theme universal` or `linux` | question theme. Without an argument it shows the current one and the list of available themes |
 | `/mode mixed`, `choice` or `order` | mixed questions, single-choice only, or order only |
 | `/greeting text` | custom greeting. You can also reply to a message with the command. `/greeting reset` restores the default |
 | `/greetttl 300` | delete the greeting after this many seconds, 0 means keep it |
@@ -83,7 +96,7 @@ Then add the bot to your group and make it an admin with the "Ban users" and "De
 .venv/bin/pytest
 ```
 
-The questions live in [`axbot/questions.py`](axbot/questions.py). If you add your own, make sure the question itself contains everything needed to answer it.
+Each theme lives in its own file in [`axbot/questions/`](axbot/questions/). To add one, create a file there modeled on `universal.py` and register it in `axbot/questions/__init__.py`. Every question must contain everything needed to answer it.
 
 ## License
 

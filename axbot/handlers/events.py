@@ -26,6 +26,7 @@ from .. import service
 from ..common import GROUP_TYPES, Cap, full_name, is_chat_admin
 from ..config import Config
 from ..db import Database
+from ..questions import get_theme
 
 log = logging.getLogger(__name__)
 router = Router(name="events")
@@ -71,9 +72,10 @@ async def bot_added(event: ChatMemberUpdated, bot: Bot, db: Database, config: Co
         else "\n\n✅ Права администратора есть — капча уже работает."
     )
     text = (
-        "🐧 Привет! Я <b>axbot</b> — пингвин-вышибала.\n"
-        "Каждый новичок будет отвечать на простой вопрос, а спам-боты отправятся в "
-        f"<code>/dev/null</code>.\n\n{owner_note}{rights_note}\n\n"
+        "👋 Привет! Я <b>axbot</b>, защищаю чат от спам-ботов.\n"
+        "Каждый новичок будет отвечать на простой вопрос на логику, а боты останутся за дверью.\n\n"
+        f"Тематика вопросов: {get_theme(settings.theme).title}. Её можно сменить в настройках.\n\n"
+        f"{owner_note}{rights_note}\n\n"
         "Настройки — в личке со мной или командой /settings в этом чате."
     )
     kb = InlineKeyboardMarkup(

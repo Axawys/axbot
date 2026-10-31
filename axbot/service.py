@@ -23,23 +23,15 @@ from aiogram.types import (
     User,
 )
 
-from .common import DEFAULT_GREETING, Cap, fmt_duration, full_name, mention
+from .common import Cap, fmt_duration, full_name, mention
 from .db import ChatSettings, Database, Pending
-from .questions import QUESTIONS, Question, pick_question
+from .questions import QUESTIONS, Question, get_theme, pick_question
 
 log = logging.getLogger(__name__)
 
 _PERM_FIELDS = list(ChatPermissions.model_fields)
 MUTED = ChatPermissions(**{f: False for f in _PERM_FIELDS})
 UNMUTED = ChatPermissions(**{f: True for f in _PERM_FIELDS})
-
-FAIL_PHRASES = [
-    "не смог выйти из vim и был удалён 🚪",
-    "отправлен в <code>/dev/null</code> 🕳",
-    "получил <code>kill -9</code> 🔪",
-    "не прошёл проверку — <code>Permission denied</code> 🚫",
-    "оказался процессом-зомби и был пожнён 🧟",
-]
 
 NOTICE_TTL = 60  # seconds a "user failed" notice stays in the chat
 
@@ -60,11 +52,11 @@ def user_lock(chat_id: int, user_id: int) -> asyncio.Lock:
 
 
 def captcha_text(
-    user_id: int, name: str, chat_title: str, q: Question, progress: int, attempts: int, seconds_left: int
+    chat: ChatSettings, user_id: int, name: str, q: Question, progress: int, attempts: int, seconds_left: int
 ) -> str:
     lines = [
-        f"👋 {mention(user_id, name)}, добро пожаловать в <b>{escape(chat_title)}</b>!",
-        "Спам-боты здесь отправляются в <code>/dev/null</code>, а людям нужно ответить на вопрос:",
+        f"👋 {mention(user_id, name)}, добро пожаловать в <b>{escape(chat.title)}</b>!",
+        get_theme(chat.theme).intro,
         "",
         f"❓ {q.text}",
     ]
@@ -132,8 +124,10 @@ async def send_temp(bot: Bot, db: Database, chat_id: int, text: str, ttl: int, *
         await db.schedule_delete(chat_id, msg.message_id, int(time.time()) + ttl)
 
 
-def render_greeting(template: str | None, user_id: int, name: str, chat_title: str) -> str:
-    text = template or DEFAULT_GREETING
+def render_greeting(chat: ChatSettings, template: str | None, user_id: int, name: str) -> str:
+    """template=None renders the theme's default greeting."""
+    chat_title = chat.title
+    text = template or get_theme(chat.theme).greeting
     return (
         text.replace("{mention}", mention(user_id, name))
         .replace("{name}", escape(name))
@@ -166,11 +160,11 @@ async def start_captcha(
                 ttl=120,
             )
 
-        q = pick_question(chat.mode)
+        q = pick_question(chat.theme, chat.mode)
         try:
             msg = await bot.send_message(
                 chat.chat_id,
-                captcha_text(user.id, name, chat.title, q, 0, chat.attempts, chat.timeout),
+                captcha_text(chat, user.id, name, q, 0, chat.attempts, chat.timeout),
                 reply_markup=captcha_keyboard(q, user.id),
             )
         except TelegramAPIError as e:
@@ -229,7 +223,7 @@ async def handle_answer(bot: Bot, db: Database, callback, data: Cap) -> None:
             await callback.answer("👍")
             try:
                 await message.edit_text(
-                    captcha_text(user.id, p.name, chat.title, q, progress, p.attempts_left, seconds_left),
+                    captcha_text(chat, user.id, p.name, q, progress, p.attempts_left, seconds_left),
                     reply_markup=mark_pressed(
                         message.reply_markup, callback.data, Cap(user_id=user.id, idx=-1).pack()
                     ),
@@ -244,12 +238,12 @@ async def handle_answer(bot: Bot, db: Database, callback, data: Cap) -> None:
             await _fail(bot, db, chat, p)
             return
 
-        new_q = pick_question(chat.mode, exclude=p.question_id)
+        new_q = pick_question(chat.theme, chat.mode, exclude=p.question_id)
         await db.update_pending(chat_id, user.id, question_id=new_q.id, progress=0, attempts_left=attempts)
         await callback.answer(f"❌ Неверно! Вот другой вопрос. Осталось попыток: {attempts}", show_alert=True)
         try:
             await message.edit_text(
-                captcha_text(user.id, p.name, chat.title, new_q, 0, attempts, seconds_left),
+                captcha_text(chat, user.id, p.name, new_q, 0, attempts, seconds_left),
                 reply_markup=captcha_keyboard(new_q, user.id),
             )
         except TelegramAPIError as e:
@@ -275,7 +269,7 @@ async def _pass(bot: Bot, db: Database, chat: ChatSettings, p: Pending) -> None:
     for template in dict.fromkeys([chat.greeting, None]):  # custom first, default as fallback
         try:
             msg = await bot.send_message(
-                p.chat_id, render_greeting(template, p.user_id, p.name, chat.title)
+                p.chat_id, render_greeting(chat, template, p.user_id, p.name)
             )
             break
         except TelegramAPIError as e:
@@ -298,7 +292,7 @@ async def _fail(bot: Bot, db: Database, chat: ChatSettings, p: Pending) -> None:
         log.warning("cannot remove %s from %s: %s", p.user_id, p.chat_id, e)
         return
     await send_temp(
-        bot, db, p.chat_id, f"{escape(p.name)} {random.choice(FAIL_PHRASES)}", ttl=NOTICE_TTL
+        bot, db, p.chat_id, f"{escape(p.name)} {random.choice(get_theme(chat.theme).fail_phrases)}", ttl=NOTICE_TTL
     )
     log.info("user %s failed in chat %s (%s)", p.user_id, p.chat_id, chat.fail_action)
 

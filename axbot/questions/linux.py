@@ -1,46 +1,11 @@
 # axbot — Telegram anti-spam captcha bot
 # Copyright (C) 2026 Axawys
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Captcha questions.
+"""Linux theme: logic questions with Linux jokes. No Linux knowledge needed."""
 
-The goal is NOT to test Linux knowledge: everything needed to answer is in
-the question itself — a bit of basic logic, counting or reading carefully.
-The Linux flavour is just for fun.
+from .base import Question, Theme, choice as _choice, order as _order
 
-`answer` is a tuple of indices into `options`:
-  * one index  -> "choice" question (press the right button);
-  * several    -> "order" question (press the buttons in this exact order),
-                  other options are decoys.
-Question ids must stay stable: they are stored in the database.
-"""
-
-from __future__ import annotations
-
-import random
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class Question:
-    id: str
-    text: str  # HTML
-    options: tuple[str, ...]
-    answer: tuple[int, ...]
-
-    @property
-    def is_order(self) -> bool:
-        return len(self.answer) > 1
-
-
-def _choice(qid: str, text: str, correct: str, *wrong: str) -> Question:
-    return Question(qid, text, (correct, *wrong), (0,))
-
-
-def _order(qid: str, text: str, sequence: list[str], decoys: list[str] = ()) -> Question:
-    return Question(qid, text, (*sequence, *decoys), tuple(range(len(sequence))))
-
-
-CHOICE_QUESTIONS: list[Question] = [
+CHOICE: list[Question] = [
     # --- simple, but fun ---
     _choice(
         "vim",
@@ -122,7 +87,7 @@ CHOICE_QUESTIONS: list[Question] = [
     ),
 ]
 
-ORDER_QUESTIONS: list[Question] = [
+ORDER: list[Question] = [
     _order(
         "ilovelinux",
         "Нажми кнопки так, чтобы получилось «I ❤️ Linux»:",
@@ -158,22 +123,22 @@ ORDER_QUESTIONS: list[Question] = [
     ),
 ]
 
-QUESTIONS: dict[str, Question] = {q.id: q for q in CHOICE_QUESTIONS + ORDER_QUESTIONS}
-assert len(QUESTIONS) == len(CHOICE_QUESTIONS) + len(ORDER_QUESTIONS), "duplicate question id"
 
-MODES = {
-    "mixed": "🎲 вперемешку",
-    "choice": "🔘 выбор ответа",
-    "order": "🔢 кнопки по порядку",
-}
-
-
-def pick_question(mode: str = "mixed", exclude: str | None = None) -> Question:
-    if mode == "choice":
-        pool = CHOICE_QUESTIONS
-    elif mode == "order":
-        pool = ORDER_QUESTIONS
-    else:
-        pool = CHOICE_QUESTIONS + ORDER_QUESTIONS
-    candidates = [q for q in pool if q.id != exclude] or pool
-    return random.choice(candidates)
+THEME = Theme(
+    key="linux",
+    title="🐧 Linux",
+    intro="Спам-боты здесь отправляются в <code>/dev/null</code>, а людям нужно ответить на вопрос:",
+    greeting=(
+        "🐧 {mention}, добро пожаловать в <b>{chat}</b>!\n"
+        "Проверка пройдена — ты точно не спам-бот. Располагайся, <code>sudo</code> не выдаём 😉"
+    ),
+    fail_phrases=(
+        "не смог выйти из vim и был удалён 🚪",
+        "отправлен в <code>/dev/null</code> 🕳",
+        "получил <code>kill -9</code> 🔪",
+        "не прошёл проверку — <code>Permission denied</code> 🚫",
+        "оказался процессом-зомби и был пожнён 🧟",
+    ),
+    choice=tuple(CHOICE),
+    order=tuple(ORDER),
+)

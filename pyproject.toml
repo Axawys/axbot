@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "axbot"
 version = "0.1.0"
-description = "Telegram anti-spam captcha bot for Linux chats"
+description = "Telegram anti-spam captcha bot with themed logic questions"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]

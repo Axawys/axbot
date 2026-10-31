@@ -19,7 +19,6 @@ from ..common import (
     ANONYMOUS_ADMIN_ID,
     ATTEMPTS_MAX,
     ATTEMPTS_MIN,
-    DEFAULT_GREETING,
     GROUP_TYPES,
     TIMEOUT_MAX,
     TIMEOUT_MIN,
@@ -32,7 +31,7 @@ from ..common import (
 )
 from ..config import Config
 from ..db import Database
-from ..questions import MODES
+from ..questions import MODES, THEMES, get_theme
 
 router = Router(name="group_admin")
 router.message.filter(F.chat.type.in_(GROUP_TYPES))
@@ -47,6 +46,7 @@ GROUP_HELP = """🐧 <b>Команды axbot в чате</b> (для владе�
 /timeout 120 — время на ответ, сек ({tmin}–{tmax})
 /attempts 2 — число попыток ({amin}–{amax})
 /action kick|ban — что делать с не прошедшими
+/theme universal|linux — тематика вопросов
 /mode mixed|choice|order — тип вопросов
 /greeting текст — своё приветствие (или ответом на сообщение)
 /greeting reset — вернуть стандартное, /greeting — показать текущее
@@ -202,6 +202,20 @@ async def cmd_mode(message: Message, command: CommandObject, bot: Bot, db: Datab
     await _reply(message, db, f"🎲 Тип вопросов: {MODES[value]}.")
 
 
+@router.message(Command("theme"))
+async def cmd_theme(message: Message, command: CommandObject, bot: Bot, db: Database, config: Config) -> None:
+    if not await _authorized(message, bot, db, config):
+        return
+    value = (command.args or "").strip().lower()
+    if value not in THEMES:
+        options = "\n".join(f"<code>/theme {key}</code> — {t.title}" for key, t in THEMES.items())
+        chat = await db.get_chat(message.chat.id)
+        await _reply(message, db, f"Сейчас: {get_theme(chat.theme).title}\n\nДоступные тематики:\n{options}")
+        return
+    await db.update_setting(message.chat.id, "theme", value)
+    await _reply(message, db, f"🎨 Тематика вопросов: {THEMES[value].title}.")
+
+
 @router.message(Command("greeting"))
 async def cmd_greeting(message: Message, command: CommandObject, bot: Bot, db: Database, config: Config) -> None:
     if not await _authorized(message, bot, db, config):
@@ -224,7 +238,7 @@ async def cmd_greeting(message: Message, command: CommandObject, bot: Bot, db: D
 
     if new_text is None:
         chat = await db.get_chat(chat_id)
-        current = chat.greeting or DEFAULT_GREETING
+        current = chat.greeting or get_theme(chat.theme).greeting
         await _reply(
             message, db,
             "💬 Текущее приветствие (исходник):\n\n"
@@ -238,7 +252,8 @@ async def cmd_greeting(message: Message, command: CommandObject, bot: Bot, db: D
         await _reply(message, db, "Слишком длинно — максимум 3000 символов.")
         return
     await db.update_setting(chat_id, "greeting", new_text)
-    preview = service.render_greeting(new_text, message.from_user.id, full_name(message.from_user), message.chat.title or "")
+    chat = await db.get_chat(chat_id)
+    preview = service.render_greeting(chat, new_text, message.from_user.id, full_name(message.from_user))
     await _reply(message, db, "✅ Приветствие сохранено. Так оно будет выглядеть:\n\n" + preview)
 
 

@@ -19,7 +19,6 @@ from .. import service
 from ..common import (
     ATTEMPTS_MAX,
     ATTEMPTS_MIN,
-    DEFAULT_GREETING,
     GREETING_TTL_PRESETS,
     TIMEOUT_PRESETS,
     Panel,
@@ -34,7 +33,7 @@ from ..common import (
 )
 from ..config import Config
 from ..db import ChatSettings, Database
-from ..questions import MODES, QUESTIONS, pick_question
+from ..questions import MODES, QUESTIONS, THEMES, get_theme, pick_question
 
 router = Router(name="private")
 router.message.filter(F.chat.type == "private")
@@ -46,9 +45,11 @@ class Input(StatesGroup):
     manager = State()
 
 
-START_TEXT = """🐧 Привет! Я <b>axbot</b> — пингвин-вышибала для Telegram-чатов.
+START_TEXT = """👋 Привет! Я <b>axbot</b>, защищаю Telegram-чаты от спам-ботов.
 
-Каждый новичок в чате отвечает на простой (и немного мемный) вопрос. Ответил — добро пожаловать. Не ответил вовремя — до свидания, спам-бот 👋
+Каждый новичок в чате отвечает на простой вопрос на логику. Ответил — добро пожаловать. Не ответил вовремя — до свидания, спам-бот.
+
+Тематики вопросов: {themes}. Выбрать можно в настройках чата.
 
 <b>Как подключить:</b>
 1. Добавь меня в группу (кнопка ниже).
@@ -78,6 +79,10 @@ def panel_keyboard(chat: ChatSettings) -> InlineKeyboardMarkup:
         text=f"При провале: {'👢 кик' if chat.fail_action == 'kick' else '🔨 бан'}",
         callback_data=Panel(action="toggle", chat_id=cid, value="fail_action"),
     )
+    kb.button(
+        text=f"Тематика: {get_theme(chat.theme).title}",
+        callback_data=Panel(action="cycle", chat_id=cid, value="theme"),
+    )
     kb.button(text=f"Вопросы: {MODES.get(chat.mode, chat.mode)}", callback_data=Panel(action="cycle", chat_id=cid, value="mode"))
     kb.button(
         text=f"🧹 Чистить «вступил/вышел»: {yes_no(chat.clean_service)}",
@@ -85,9 +90,9 @@ def panel_keyboard(chat: ChatSettings) -> InlineKeyboardMarkup:
     )
     kb.button(text="💬 Приветствие", callback_data=Panel(action="greet", chat_id=cid))
     kb.button(text="👥 Менеджеры", callback_data=Panel(action="mgr", chat_id=cid))
-    kb.button(text="🧪 Попробовать капчу", callback_data=Panel(action="try", chat_id=cid, value=chat.mode))
+    kb.button(text="🧪 Попробовать капчу", callback_data=Panel(action="try", chat_id=cid, value=f"{chat.theme},{chat.mode}"))
     kb.button(text="« Мои чаты", callback_data=Panel(action="list"))
-    kb.adjust(1, 2, 2, 1, 2, 1, 1)
+    kb.adjust(1, 2, 1, 2, 1, 2, 1, 1)
     return kb.as_markup()
 
 
@@ -176,9 +181,11 @@ async def cmd_start(message: Message, state: FSMContext, bot: Bot, db: Database,
     kb = InlineKeyboardBuilder()
     kb.button(text="➕ Добавить в группу", url=_add_to_group_url(me.username))
     kb.button(text="⚙️ Мои чаты", callback_data=Panel(action="list"))
-    kb.button(text="🧪 Попробовать капчу", callback_data=Panel(action="try", value="mixed"))
+    for key, theme in THEMES.items():
+        kb.button(text=f"🧪 Попробовать: {theme.title}", callback_data=Panel(action="try", value=f"{key},mixed"))
     kb.adjust(1)
-    await message.answer(START_TEXT, reply_markup=kb.as_markup())
+    themes = ", ".join(t.title for t in THEMES.values())
+    await message.answer(START_TEXT.format(themes=themes), reply_markup=kb.as_markup())
 
 
 @router.message(Command("chats", "settings"))
@@ -243,6 +250,10 @@ async def cb_cycle(callback: CallbackQuery, callback_data: Panel, bot: Bot, db: 
     if callback_data.value == "attempts":
         nxt = chat.attempts + 1 if chat.attempts < ATTEMPTS_MAX else ATTEMPTS_MIN
         await db.update_setting(cid, "attempts", nxt)
+    elif callback_data.value == "theme":
+        keys = list(THEMES)
+        nxt = keys[(keys.index(chat.theme) + 1) % len(keys)] if chat.theme in keys else keys[0]
+        await db.update_setting(cid, "theme", nxt)
     elif callback_data.value == "mode":
         modes = list(MODES)
         nxt = modes[(modes.index(chat.mode) + 1) % len(modes)] if chat.mode in modes else modes[0]
@@ -292,7 +303,7 @@ async def show_greeting_menu(target, db: Database, cid: int) -> None:
     back_button(kb, cid)
     kb.adjust(2, 1, 1)
     me = target.from_user
-    preview = service.render_greeting(chat.greeting, me.id, full_name(me), chat.title)
+    preview = service.render_greeting(chat, chat.greeting, me.id, full_name(me))
     await _show(
         target,
         f"💬 <b>Приветствие</b> ({'своё' if chat.greeting else 'стандартное'})\n\n"
@@ -336,6 +347,7 @@ async def cb_greet_ttl(callback: CallbackQuery, callback_data: Panel, bot: Bot, 
 async def cb_greet_edit(callback: CallbackQuery, callback_data: Panel, state: FSMContext, bot: Bot, db: Database, config: Config) -> None:
     if not await _check(callback, bot, db, config, callback_data.chat_id):
         return
+    chat = await db.get_chat(callback_data.chat_id)
     await state.set_state(Input.greeting)
     await state.update_data(chat_id=callback_data.chat_id)
     kb = InlineKeyboardBuilder()
@@ -345,7 +357,7 @@ async def cb_greet_edit(callback: CallbackQuery, callback_data: Panel, state: FS
         "✏️ Пришли новый текст приветствия. Форматирование (жирный, курсив, ссылки) сохранится.\n\n"
         "Подстановки:\n<code>{mention}</code> — ссылка на новичка\n<code>{name}</code> — его имя\n"
         "<code>{chat}</code> — название чата\n\n"
-        f"Стандартное для примера:\n<pre>{escape(DEFAULT_GREETING)}</pre>",
+        f"Стандартное для примера:\n<pre>{escape(get_theme(chat.theme).greeting)}</pre>",
         kb.as_markup(),
     )
     await callback.answer()
@@ -472,7 +484,8 @@ def _try_text(q, progress: int) -> str:
 
 @router.callback_query(Panel.filter(F.action == "try"))
 async def cb_try(callback: CallbackQuery, callback_data: Panel) -> None:
-    q = pick_question(callback_data.value or "mixed")
+    theme, _, mode = (callback_data.value or "").partition(",")
+    q = pick_question(theme, mode or "mixed")
     kb = service.build_keyboard(q, lambda i: Try(qid=q.id, idx=i, progress=0).pack())
     await callback.message.answer(_try_text(q, 0), reply_markup=kb)
     await callback.answer()

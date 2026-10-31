@@ -42,7 +42,7 @@ from axbot.common import Cap
 from axbot.config import Config
 from axbot.db import Database
 from axbot.handlers import build_router, events, group_admin, private
-from axbot.questions import QUESTIONS
+from axbot.questions import QUESTIONS, THEMES
 
 BOT_ID = 4242
 OWNER = User(id=1, is_bot=False, first_name="Owner")
@@ -149,7 +149,7 @@ async def test_bot_added_sets_owner(env):
     await add_bot(feed)
     chat = await db.get_chat(CHAT.id)
     assert chat.owner_id == OWNER.id and chat.active
-    assert any("пингвин-вышибала" in m.text for m in session.of(SendMessage))
+    assert any("защищаю чат" in m.text for m in session.of(SendMessage))
 
 
 @pytest.mark.asyncio
@@ -315,3 +315,62 @@ def test_questions_are_sane():
         assert len(set(q.options)) == len(q.options), q.id
         assert all(0 <= i < len(q.options) for i in q.answer), q.id
         assert len(Cap(user_id=10**12, idx=len(q.options)).pack()) <= 64
+
+
+@pytest.mark.asyncio
+async def test_theme_switch(env):
+    bot, dp, db, session, feed = env
+    await add_bot(feed)
+    assert (await db.get_chat(CHAT.id)).theme == "universal"
+
+    await join(feed)
+    p = await db.get_pending(CHAT.id, NEWBIE.id)
+    universal_ids = {q.id for q in (*THEMES["universal"].choice, *THEMES["universal"].order)}
+    assert p.question_id in universal_ids
+    await feed(chat_member=member_update(NEWBIE, NEWBIE, ChatMemberMember(user=NEWBIE), ChatMemberLeft(user=NEWBIE)))
+
+    await feed(message=group_msg("/theme linux", OWNER, mid=40))
+    assert (await db.get_chat(CHAT.id)).theme == "linux"
+    await join(feed)
+    p = await db.get_pending(CHAT.id, NEWBIE.id)
+    linux_ids = {q.id for q in (*THEMES["linux"].choice, *THEMES["linux"].order)}
+    assert p.question_id in linux_ids
+
+    await feed(message=group_msg("/theme nonsense", OWNER, mid=41))
+    assert (await db.get_chat(CHAT.id)).theme == "linux"
+
+
+@pytest.mark.asyncio
+async def test_old_database_migrates_to_linux(tmp_path):
+    import aiosqlite
+
+    path = str(tmp_path / "old.sqlite3")
+    async with aiosqlite.connect(path) as conn:
+        await conn.execute("CREATE TABLE chats (chat_id INTEGER PRIMARY KEY, title TEXT NOT NULL DEFAULT '', "
+                           "owner_id INTEGER, active INTEGER NOT NULL DEFAULT 1, enabled INTEGER NOT NULL DEFAULT 1, "
+                           "timeout INTEGER NOT NULL DEFAULT 120, attempts INTEGER NOT NULL DEFAULT 2, "
+                           "fail_action TEXT NOT NULL DEFAULT 'kick', mode TEXT NOT NULL DEFAULT 'mixed', "
+                           "greeting TEXT, greeting_ttl INTEGER NOT NULL DEFAULT 0, "
+                           "clean_service INTEGER NOT NULL DEFAULT 1)")
+        await conn.execute("INSERT INTO chats (chat_id, title) VALUES (-1, 'old')")
+        await conn.commit()
+    db = Database(path)
+    await db.connect()
+    assert (await db.get_chat(-1)).theme == "linux"
+    assert (await db.get_or_create_chat(-2, "new")).theme == "universal"
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_private_try_buttons(env):
+    bot, dp, db, session, feed = env
+    pm = Chat(id=OWNER.id, type="private")
+    await feed(message=Message(message_id=1, date=NOW, chat=pm, from_user=OWNER, text="/start"))
+    markup = session.of(SendMessage)[-1].reply_markup
+    try_buttons = [b for row in markup.inline_keyboard for b in row if b.callback_data and b.callback_data.startswith("p:try")]
+    assert len(try_buttons) == len(THEMES)
+    for b in try_buttons:
+        await feed(callback_query=CallbackQuery(id="x", from_user=OWNER, chat_instance="ci",
+                                                message=Message(message_id=5, date=NOW, chat=pm, text="m"),
+                                                data=b.callback_data))
+    assert sum("Тестовая капча" in m.text for m in session.of(SendMessage)) == len(THEMES)

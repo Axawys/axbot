@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS chats (
     attempts      INTEGER NOT NULL DEFAULT 2,
     fail_action   TEXT    NOT NULL DEFAULT 'kick',
     mode          TEXT    NOT NULL DEFAULT 'mixed',
+    theme         TEXT    NOT NULL DEFAULT 'universal',
     greeting      TEXT,
     greeting_ttl  INTEGER NOT NULL DEFAULT 0,
     clean_service INTEGER NOT NULL DEFAULT 1
@@ -58,6 +59,7 @@ SETTING_FIELDS = {
     "attempts",
     "fail_action",
     "mode",
+    "theme",
     "greeting",
     "greeting_ttl",
     "clean_service",
@@ -75,6 +77,7 @@ class ChatSettings:
     attempts: int = 2
     fail_action: str = "kick"
     mode: str = "mixed"
+    theme: str = "universal"
     greeting: str | None = None
     greeting_ttl: int = 0
     clean_service: bool = True
@@ -117,7 +120,17 @@ class Database:
         self._conn.row_factory = aiosqlite.Row
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.executescript(SCHEMA)
+        await self._migrate()
         await self._conn.commit()
+
+    async def _migrate(self) -> None:
+        """Add columns that appeared after the first release."""
+        async with self.conn.execute("PRAGMA table_info(chats)") as cur:
+            columns = {row["name"] for row in await cur.fetchall()}
+        if "theme" not in columns:
+            await self.conn.execute("ALTER TABLE chats ADD COLUMN theme TEXT NOT NULL DEFAULT 'universal'")
+            # Chats created before themes existed were Linux chats.
+            await self.conn.execute("UPDATE chats SET theme = 'linux'")
 
     async def close(self) -> None:
         if self._conn is not None:
