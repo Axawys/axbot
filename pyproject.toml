@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axbot"
+version = "0.1.0"
+description = "Telegram anti-spam captcha bot for Linux chats"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.11"
+dependencies = [
+    "aiogram>=3.20,<4",
+    "aiosqlite>=0.20",
+]
+
+[project.scripts]
+axbot = "axbot.__main__:run"
+
+[tool.setuptools.packages.find]
+include = ["axbot*"]
+
+[tool.ruff]
+line-length = 120
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
