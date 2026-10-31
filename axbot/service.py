@@ -1,6 +1,6 @@
 # axbot — Telegram anti-spam captcha bot
 # Copyright (C) 2026 Axawys
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: 0BSD
 """Captcha lifecycle: start → (answer)* → pass | fail, plus the watchdog."""
 
 from __future__ import annotations

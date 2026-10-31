@@ -7,7 +7,7 @@ name = "axbot"
 version = "0.1.0"
 description = "Telegram anti-spam captcha bot with themed logic questions"
 readme = "README.md"
-license = "GPL-3.0-or-later"
+license = "0BSD"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [

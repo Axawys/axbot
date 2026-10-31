@@ -1,6 +1,6 @@
 # axbot — Telegram anti-spam captcha bot
 # Copyright (C) 2026 Axawys
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: 0BSD
 """Settings panel in the private chat with the bot."""
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ START_TEXT = """👋 Привет! Я <b>axbot</b>, защищаю Telegram-ча
 2. Сделай администратором с правами «Блокировка пользователей» и «Удаление сообщений».
 3. Готово! Кто меня добавил — тот и управляет мной: здесь, в личке, или командами в чате (/help в группе).
 
-Исходный код: GPLv3."""
+Исходный код открыт, лицензия 0BSD."""
 
 
 def _add_to_group_url(username: str) -> str:

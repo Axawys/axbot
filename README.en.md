@@ -120,4 +120,4 @@ Each theme lives in its own file in [`axbot/questions/`](axbot/questions/). To a
 
 ## License
 
-[GNU GPL v3](LICENSE) or any later version.
+[0BSD](LICENSE). You can copy, modify and use the code however you like, including in closed-source and commercial projects, with no need to credit the author.

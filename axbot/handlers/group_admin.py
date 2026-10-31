@@ -1,6 +1,6 @@
 # axbot — Telegram anti-spam captcha bot
 # Copyright (C) 2026 Axawys
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: 0BSD
 """Management commands sent right in the group by the bot's owner/managers."""
 
 from __future__ import annotations

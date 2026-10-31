@@ -1,6 +1,6 @@
 # axbot — Telegram anti-spam captcha bot
 # Copyright (C) 2026 Axawys
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: 0BSD
 """Shared helpers: access checks, callback data, formatting."""
 
 from __future__ import annotations

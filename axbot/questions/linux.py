@@ -1,6 +1,6 @@
 # axbot — Telegram anti-spam captcha bot
 # Copyright (C) 2026 Axawys
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: 0BSD
 """Linux theme: logic questions with Linux jokes. No Linux knowledge needed."""
 
 from .base import Question, Theme, choice as _choice, order as _order
